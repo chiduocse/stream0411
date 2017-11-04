@@ -3,13 +3,11 @@ const uid = require('uid');
 const $ = require('jquery');
 const openStream = require('./openStream');
 const playVideo = require('./playVideo');
+const io = require('socket.io-client');
 
+const socket = io("http://localhost:3000");
 
-function getPeerId() {
-    const id = uid(10);
-    $('#peerid').append(id);
-    return id;
-};
+$('#chatBox').hide();
 
 // Node Get ICE STUN and TURN list
 var https = require("https");
@@ -27,28 +25,10 @@ var httpreq = https.request(options, function (httpres) {
     httpres.on("data", function (data) { str = data; });
     httpres.on("error", function (e) { console.log("error: ", e); });
     httpres.on("end", function () {
-        console.log(str);
     });
 });
 httpreq.end();
 let customConfig;
-
-//Call Xirsys ICE server
-// $.ajax({
-//     url: "https://service.xirsys.com/ice",
-//     data: {
-//         ident: "chiduocse",
-//         secret: "bbfb0526-c154-11e7-b314-00d588086573",
-//         channel: "ChiduocSE",
-//         secure: 1
-//     },
-//     success: function (data, status) {
-//         //data.d is where the iceServers object lives
-//         customConfig = data.d;
-//         console.log(customConfig);
-//     },
-//     async: false
-// });
 
 const connectionObj = {
     host: 'stream041117.herokuapp.com',
@@ -56,9 +36,14 @@ const connectionObj = {
     secure: true,
     key: 'peerjs',
     config: str
-}
+};
+const peerId = getPeerId();
+$('#btnSignUp').click(() => {
+    const username = $('#txtUserName').val();
+    socket.emit('NEW_PEER_ID', {peerId: peerId, username: username});
+});
 
-const peer = new Peer(getPeerId(), connectionObj);
+const peer = new Peer(peerId, connectionObj);
 $('#btnCall').click(() => {
     const friendId = $('#txtFriendId').val();
     openStream(stream => {
@@ -73,5 +58,37 @@ peer.on('call', (call) => {
         playVideo(stream, 'localStream');
         call.answer(stream);
         call.on('stream', remoteStream => playVideo(remoteStream, 'friendStream'));
-    })
+    });
 });
+
+
+$('#ulPeerId').on('click', 'li', function () {
+    const peerId = $(this).attr('id');
+    openStream(stream => {
+        playVideo(stream, 'localStream');
+        const call = peer.call(peerId, stream);
+        call.on('stream', remoteStream => playVideo(remoteStream, 'friendStream'));
+    });
+});
+
+function getPeerId() {
+    const id = uid(10);
+    $('#peerid').append(id);
+    return id;
+};
+
+socket.on('ONLINE_PEER_ARRAY', arrUserInfo => {
+    $('#chatBox').show();
+    $('#register').hide();
+    arrUserInfo.forEach(user => {
+        $('#ulPeerId').append('<li id=' + user.peerId + '>' + user.username + '</li>');
+    });
+    socket.on('NEW_CLIENT_CONNECT', user => $('#ulPeerId').append('<li id=' + user.peerId + '>' + user.username + '</li>'));
+});
+
+socket.on('REGISTRATION_FAILED',()=> alert('Vui lòng chọn UserName khác!'));
+
+socket.on('SOMEONE_DISCONNECTED', peerId => {
+    $('#' + peerId).remove();
+});
+
